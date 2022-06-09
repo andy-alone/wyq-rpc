@@ -1,2 +1,2 @@
 # wyq-rpc
-rpc framework
+rpc-framework
