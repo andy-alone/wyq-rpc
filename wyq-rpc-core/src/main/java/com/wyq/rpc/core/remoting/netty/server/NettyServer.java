@@ -2,12 +2,17 @@ package com.wyq.rpc.core.remoting.netty.server;
 
 import com.wyq.rpc.core.util.CustomThreadFactory;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.string.StringDecoder;
+import io.netty.handler.codec.string.StringEncoder;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import lombok.SneakyThrows;
@@ -34,7 +39,9 @@ public class NettyServer {
         serviceHandleGroup = new DefaultEventExecutorGroup(cpu.get() * 2, new CustomThreadFactory());
     }
 
-
+    public static void main(String[] args) {
+        new NettyServer().start();
+    }
 
     @SneakyThrows
     public void start() {
@@ -53,12 +60,24 @@ public class NettyServer {
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel ch) throws Exception {
-                            ChannelPipeline p = ch.pipeline();
-                            p.addLast(new IdleStateHandler(30, 0, 0, TimeUnit.SECONDS));
+                            ChannelPipeline pipeline = ch.pipeline();
+                            pipeline.addLast(new StringDecoder());
+                            pipeline.addLast(new StringEncoder());
+                            pipeline.addLast(new HeartBeatHandler(0,5,0, TimeUnit.SECONDS));
+                            pipeline.addLast(new ChannelInboundHandlerAdapter(){
+                                @Override
+                                public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                                    log.info(msg.toString());
+                                    ByteBuf byteBuf = ctx.alloc().buffer().writeBytes("server".getBytes());
+                                    ctx.writeAndFlush(byteBuf);
+                                    super.channelRead(ctx, msg);
+                                }
+                            });
                         }
                     });
             // 绑定端口，同步等待绑定成功
-            ChannelFuture channelFuture = bootstrap.bind(host, 9999).sync();
+            ChannelFuture channelFuture = bootstrap.bind(9999).sync();
+            log.info("server start...");
             // 等待服务端监听端口关闭
             channelFuture.channel().closeFuture().sync();
         } catch (InterruptedException e) {
